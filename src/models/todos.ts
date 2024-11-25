@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 
 export const TodoSchema = z
   .object({
-    id: z.string().openapi({ example: "1" }),
+    id: z.number().openapi({ example: 1 }),
     title: z.string().openapi({ example: "Learning Hono" }),
     completed: z.boolean().openapi({ example: false }),
   })

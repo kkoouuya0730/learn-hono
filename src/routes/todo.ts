@@ -1,26 +1,14 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import { TodoParamSchema, TodoListSchema, TodoSchema, CreateTodoSchema } from "../models/todos";
 import { MessageSchema } from "../models/error";
+import { PrismaD1 } from "@prisma/adapter-d1";
+import { PrismaClient } from "@prisma/client";
 
-export const app = new OpenAPIHono();
+type Bindings = {
+  DB: D1Database;
+};
 
-const todoList = [
-  {
-    id: "1",
-    title: "Learning Hono",
-    completed: false,
-  },
-  {
-    id: "2",
-    title: "Implement Todo API",
-    completed: true,
-  },
-  {
-    id: "3",
-    title: "Write documentation",
-    completed: false,
-  },
-];
+export const app = new OpenAPIHono<{ Bindings: Bindings }>();
 
 const getTodoRoute = createRoute({
   method: "get",
@@ -59,9 +47,13 @@ const getTodoRoute = createRoute({
 
 app.openapi(
   getTodoRoute,
-  (c) => {
+  async (c) => {
+    const adapter = new PrismaD1(c.env.DB);
+    const prisma = new PrismaClient({ adapter });
+
     const { id } = c.req.valid("param");
-    const todo = todoList.find((todo) => todo.id === id);
+
+    const todo = await prisma.todo.findUnique({ where: { id: Number(id) } });
 
     if (!todo) return c.json({ code: 404, message: "Not Found" }, 404);
 
@@ -114,7 +106,11 @@ const getTodoListRoute = createRoute({
 
 app.openapi(
   getTodoListRoute,
-  (c) => {
+  async (c) => {
+    const adapter = new PrismaD1(c.env.DB);
+    const prisma = new PrismaClient({ adapter });
+
+    const todoList = await prisma.todo.findMany();
     return c.json(todoList, 200);
   },
   (result, c) => {
@@ -166,15 +162,17 @@ const createTodoRoute = createRoute({
 app.openapi(
   createTodoRoute,
   async (c) => {
+    const adapter = new PrismaD1(c.env.DB);
+    const prisma = new PrismaClient({ adapter });
     const { title } = await c.req.json();
 
-    const newTodo = {
-      id: String(todoList.length + 1),
-      title,
-      completed: false,
-    };
+    const newTodo = await prisma.todo.create({
+      data: {
+        title,
+        completed: false,
+      },
+    });
 
-    todoList.push(newTodo);
     return c.json(newTodo, 200);
   },
   (result, c) => {
@@ -228,17 +226,19 @@ const updateTodoRoute = createRoute({
 app.openapi(
   updateTodoRoute,
   async (c) => {
+    const adapter = new PrismaD1(c.env.DB);
+    const prisma = new PrismaClient({ adapter });
     const { id } = c.req.valid("param");
 
-    const todo = todoList.find((todo) => todo.id === id);
+    const todo = await prisma.todo.findUnique({ where: { id: Number(id) } });
 
     if (!todo) {
       return c.json({ code: 404, message: "Not Found" }, 404);
     }
 
-    todo.completed = !todo.completed;
+    const updatedTodo = await prisma.todo.update({ where: { id: Number(id) }, data: { completed: !todo.completed } });
 
-    return c.json(todo, 200);
+    return c.json(updatedTodo, 200);
   },
   (result, c) => {
     if (!result.success) {
@@ -291,9 +291,19 @@ const deleteTodoRoute = createRoute({
 app.openapi(
   deleteTodoRoute,
   async (c) => {
+    const adapter = new PrismaD1(c.env.DB);
+    const prisma = new PrismaClient({ adapter });
     const { id } = c.req.valid("param");
 
-    const newTodoList = todoList.filter((todo) => todo.id !== id);
+    const todo = await prisma.todo.findUnique({ where: { id: Number(id) } });
+
+    if (!todo) {
+      return c.json({ code: 404, message: "Not Found" }, 404);
+    }
+
+    await prisma.todo.delete({ where: { id: Number(id) } });
+
+    const newTodoList = await prisma.todo.findMany();
 
     return c.json(newTodoList, 200);
   },
